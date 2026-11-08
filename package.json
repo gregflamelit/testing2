@@ -1,0 +1,12 @@
+{
+  "name": "cuvee-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A transparent red wine quality workbench with offline browser inference",
+  "scripts": {
+    "test": "node tests/verify.mjs",
+    "start": "node serve.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

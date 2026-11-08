@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {predict,interval} from '../web/inference.mjs';
+const model=JSON.parse(fs.readFileSync(new URL('../web/model.json',import.meta.url)));
+const data=JSON.parse(fs.readFileSync(new URL('../web/dataset.json',import.meta.url)));
+assert.equal(model.features.length,11);
+assert(!model.features.includes('quality'));
+assert.equal(data.rows.length,1599);
+assert.equal(data.rows.length,data.split.length);
+const groups=new Map();
+data.rows.forEach((r,i)=>{const key=JSON.stringify(r.slice(0,11));if(groups.has(key))assert.equal(groups.get(key),data.split[i],'Duplicate chemistry leaked between partitions');groups.set(key,data.split[i]);});
+for(const v of model.testVectors)assert(Math.abs(predict(model,v.x)-v.prediction)<1e-10,'Browser inference differs from sklearn');
+assert.throws(()=>predict(model,[1,2]));
+assert.throws(()=>predict(model,Array(11).fill(NaN)));
+let absolute=0,baseline=0,covered=0;
+for(const sample of data.testPredictions){
+  assert.equal(data.split[sample.index],'test');
+  const actual=data.rows[sample.index][11];
+  assert.equal(actual,sample.actual);
+  const p=predict(model,data.rows[sample.index].slice(0,11));
+  assert(Math.abs(p-sample.prediction)<1e-10);
+  absolute+=Math.abs(p-actual);baseline+=Math.abs(model.metrics.baselineValue-actual);
+  const [lo,hi]=interval(model,p);covered+=actual>=lo&&actual<=hi?1:0;
+}
+const n=data.testPredictions.length;
+assert.equal(n,model.metrics.testCount);
+assert(Math.abs(absolute/n-model.metrics.mae)<1e-10);
+assert(Math.abs(baseline/n-model.metrics.baselineMae)<1e-10);
+assert(Math.abs(covered/n-model.metrics.intervalCoverage)<1e-10);
+assert(model.metrics.mae<model.metrics.baselineMae);
+const lengths=['train','calibration','test'].map(s=>data.split.filter(x=>x===s).length);
+assert.deepEqual(lengths,[model.metrics.trainCount,model.metrics.calibrationCount,model.metrics.testCount]);
+console.log(`PASS: all ${n} test predictions match sklearn; duplicate groups isolated; metrics and intervals reproduced; malformed inputs rejected.`);
